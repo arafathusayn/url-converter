@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import type { AppProps } from "next/app";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
@@ -11,7 +11,7 @@ interface AppContext {
 }
 
 const defaultContext = {
-  colorMode: "light",
+  colorMode: "dark",
   toggleColorMode: () => {},
 } as const;
 
@@ -19,16 +19,43 @@ export const ColorModeContext = React.createContext<AppContext>(defaultContext);
 
 const cache = createCache({ key: "next" });
 
+let doneWithEffect = false;
+
 function MyApp({ Component, pageProps }: AppProps) {
   const [colorMode, setColorMode] = useState<AppContext["colorMode"]>(
     defaultContext.colorMode,
   );
 
+  useEffect(() => {
+    if (!doneWithEffect) {
+      doneWithEffect = true;
+
+      try {
+        if (!matchMedia("(prefers-color-scheme: dark)").matches) {
+          setColorMode("light");
+        }
+
+        matchMedia("(prefers-color-scheme: dark)").addEventListener(
+          "change",
+          ({ matches }) => {
+            if (matches) {
+              setColorMode("dark");
+            } else {
+              setColorMode("light");
+            }
+          },
+        );
+      } catch (error) {
+        console.log(error);
+      }
+    }
+  }, []);
+
   const theme = React.useMemo(
     () =>
       createTheme({
         palette: {
-          mode: colorMode,
+          mode: colorMode === "dark" ? "dark" : "light",
         },
       }),
     [colorMode],
