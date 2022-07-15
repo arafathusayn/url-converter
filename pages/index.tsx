@@ -1,5 +1,5 @@
 import type { NextPage } from "next";
-import React, { useContext, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import AppBar from "@mui/material/AppBar";
 import Box from "@mui/material/Box";
 import Toolbar from "@mui/material/Toolbar";
@@ -21,49 +21,81 @@ import DialogTitle from "@mui/material/DialogTitle";
 import DialogActions from "@mui/material/DialogActions";
 import { TransitionProps } from "@mui/material/transitions";
 import Slide from "@mui/material/Slide";
+import Tabs from "@mui/material/Tabs";
+import Tab from "@mui/material/Tab";
+import CircularProgress from "@mui/material/CircularProgress";
+
+import { convertGDViewLinkToDownloadLink } from "../lib/google-drive";
 import { ColorModeContext } from "./_app";
+import { convertShortLinkToFull } from "../lib/short-link";
 
-const convert = (inputUrl: string): string => {
-  if (!inputUrl.includes("drive.google.com")) {
-    return "";
-  }
-
-  try {
-    const match = inputUrl.match(/\/d\/(?<id>.+)\/view/gi);
-    const id =
-      match && match[0] && match[0].replace("/d/", "").replace("/view", "");
-
-    if (id) {
-      return `https://drive.google.com/uc?id=${id}&export=download`;
-    } else {
-      throw new Error("failed to convert");
-    }
-  } catch (error) {
-    console.error(error);
-    return "";
-  }
-};
+const tabs = [
+  {
+    label: "Google Drive",
+    value: "gd",
+  },
+  {
+    label: "Short Link",
+    value: "sl",
+  },
+] as const;
 
 const Home: NextPage = () => {
   const [convertedUrl, setConvertedUrl] = useState("");
   const theme = useTheme();
   const colorMode = useContext(ColorModeContext);
   const [copiedDialogOpen, setCopiedDialogOpen] = useState(false);
+  const [currentTab, setCurrentTab] =
+    useState<typeof tabs[number]["value"]>("gd");
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      if (window.location.hash.includes("tab=gd")) {
+        setCurrentTab("gd");
+      } else if (window.location.hash.includes("tab=sl")) {
+        setCurrentTab("sl");
+      }
+    }
+  }, []);
 
   const handleCopiedDialogClose = () => {
     setCopiedDialogOpen(false);
   };
 
-  const handleChange = (event: any) => {
+  const handleGoogleDriveLinkChange: React.ChangeEventHandler<
+    HTMLInputElement
+  > = (event) => {
     const url = event.target.value;
 
-    if (url.startsWith("https://")) {
-      const converted = convert(url);
+    // handle google drive view link
+    if (url.startsWith("https://drive.google.com")) {
+      const converted = convertGDViewLinkToDownloadLink(url);
 
       if (converted && converted !== url) {
         setConvertedUrl(converted);
       }
     }
+  };
+
+  const handleShortLinkChange: React.ChangeEventHandler<
+    HTMLInputElement
+  > = async (event) => {
+    setLoading(true);
+
+    if (
+      typeof event.target.value === "string" &&
+      (event.target.value.startsWith("https://") ||
+        event.target.value.startsWith("http://"))
+    ) {
+      const converted = await convertShortLinkToFull(event.target.value);
+
+      if (converted) {
+        setConvertedUrl(converted);
+      }
+    }
+
+    setLoading(false);
   };
 
   return (
@@ -134,25 +166,73 @@ const Home: NextPage = () => {
       >
         <Box m="10px">
           <p style={{ fontSize: "12px", color: "grey" }}>
-            Convert Google Drive view links to direct download links.
-          </p>
-          <p style={{ fontSize: "12px", color: "grey" }}>
-            Other URL conversions are coming soon.
+            Convert Google Drive view links to direct download links, a short
+            link (bit.ly, tinyurl etc.) to its redirected full link etc. Other
+            URL conversions are coming soon.
           </p>
 
-          <Box mt="40px">
-            <TextField
-              variant="outlined"
-              focused
-              fullWidth
-              required
-              label="Google Drive"
-              defaultValue=""
-              placeholder="Paste link here"
-              onChange={handleChange}
-              type="url"
-            />
+          <Box sx={{ borderBottom: 1, borderColor: "divider" }}>
+            <Tabs
+              value={currentTab}
+              onChange={(
+                _event: React.SyntheticEvent,
+                newValue: typeof tabs[number]["value"],
+              ) => {
+                setCurrentTab(newValue);
+
+                if (typeof window !== "undefined") {
+                  window.location.hash = `tab=${newValue}`;
+                }
+              }}
+              aria-label="tabs"
+            >
+              {tabs.map((tab) => (
+                <Tab key={tab.value} label={tab.label} value={tab.value} />
+              ))}
+            </Tabs>
           </Box>
+
+          <Box mt="20px">
+            {currentTab === "gd" && (
+              <TextField
+                variant="outlined"
+                focused
+                fullWidth
+                required
+                label="Google Drive File View Link"
+                defaultValue=""
+                placeholder="Paste link here"
+                onChange={handleGoogleDriveLinkChange}
+                type="url"
+              />
+            )}
+
+            {currentTab === "sl" && (
+              <TextField
+                variant="outlined"
+                focused
+                fullWidth
+                required
+                label="Short Link (eg. Bit.ly, Tinyurl)"
+                defaultValue=""
+                placeholder="Paste link here"
+                onChange={handleShortLinkChange}
+                type="url"
+              />
+            )}
+          </Box>
+
+          {loading && (
+            <Stack
+              mt="20px"
+              direction="row"
+              position="absolute"
+              left="50%"
+              style={{ transform: "translate(-50%)" }}
+            >
+              <CircularProgress />
+            </Stack>
+          )}
 
           {convertedUrl && (
             <Stack mt="40px">
@@ -160,7 +240,7 @@ const Home: NextPage = () => {
                 focused
                 variant="outlined"
                 fullWidth
-                label="Direct Link"
+                label="Converted Link"
                 value={convertedUrl}
                 onFocus={(event) => {
                   event.target.select();
